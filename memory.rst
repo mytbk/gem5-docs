@@ -62,6 +62,85 @@ crossbar (XBar) [5]_ 用于让一个端口能和多个端口连接，在配置 g
 
 XBar 类的定义在 mem/XBar.py. BaseXBar 类 [7]_ 中包含多个 MasterPort 和 SlavePort, 可以配置延迟和带宽。XBar 有一致性和非一致性两种。SystemXBar 是一致性的 XBar, 它一端连接 CPU、GPU 和支持一致性 I/O 的主设备，另一端连接主存。一致性需要 SnoopFilter 维护。
 
+
+gem5 CPU 访存流程
+--------------------------
+
+这部分介绍 gem5 的 CPU 模型如何完成一次存储访问。
+
+Atomic read
+~~~~~~~~~~~~~~
+
+对于 Atomic 访问方式，CPU 模型执行访存指令都用指令类的 Execute 函数。以 RISC-V 体系结构为例，该函数又调用 arch/generic/memhelpers.hh 的 readMemAtomicLE 和 readMemAtomic 函数。总的调用流程如下::
+
+  readMemAtomic(exec_context, traceData, addr, mem, flags)
+    -> ExecContext::readMem(addr, data, size, flags)
+         -> AtomicSimpleCPU::readMem(addr, data, size, flags)
+
+在 AtomicSimpleCPU 中，readMem() 首先配置一个 Request 的虚拟地址和读取数据大小，接着调用体系结构的地址翻译功能，把虚拟地址转为物理地址，之后用这个 Request 生成一个 Packet，把这个 Packet 发往 D-cache 端口，完成一次访问。
+
+Timing read
+~~~~~~~~~~~~~~
+
+(TBD)
+
+
+在 gem5 Python 配置中连接端口
+-------------------------------
+
+(TBD)
+
+
+一个使用 SimpleMemory 的例子
+-------------------------------
+
+以下部分是我做的一些 hacking 工作，用于探索关于 Port 和存储访问的实现细节。
+
+配置 gem5 中的部件和存储系统的连接的方法是在 Python 配置中将要连接的端口连接起来。以下描述如何创建一个可以连接存储系统的 SimObject，并将其连接到，连接到一个 SimpleMemory 的方法。这里以 learning_gem5/part2 中的 SimpleObject 为例。
+
+首先要添加一个 MasterPort::
+
+  mem_side = MasterPort("memory side port, send requests")
+
+除了在 Python 里面添加此定义外，还需要在 SimpleObject 类中添加 MasterPort 的成员。MasterPort 是个虚基类，它的子类必须有以下虚成员函数::
+
+  virtual bool recvTimingResp(PacketPtr pkt);
+  virtual void recvReqRetry();
+
+实现了一个 MasterPort 的子类 SimplePort 后，在 SimpleObject 添加该类的成员 memPort. 现在需要实现 getPort 函数，让 gem5 知道在绑定端口时和 memPort 绑定::
+
+  virtual Port &getPort(const std::string &if_name,
+                        PortID idx=InvalidPortID) override
+  {
+      if (if_name == "mem_side")
+          return memPort;
+      return SimpleObject::getPort(if_name, idx);
+  }
+
+这里 "mem_side" 用的是在 Python 类定义 SimpleObject.py 里面的端口名字。
+
+要连接端口，首先在配置文件里面实例化一个 SimpleObject 和 SimpleMemory. AbstractMemory 要求 gem5 模拟的系统有 System 的实例，于是实例化一个 System，并把 SimpleMemory 的实例连接到 System 下::
+
+  system = System()
+  system.clk_domain = SrcClockDomain()
+  system.clk_domain.clock = '1GHz'
+  system.clk_domain.voltage_domain = VoltageDomain()
+
+  system.memory = SimpleMemory(range=AddrRange('512MB'))
+
+此外，System 有一个称为 system_port 的 MasterPort，可以把它连接到一个 SystemXBar 下::
+
+  system.membus = SystemXBar()
+  system.system_port = system.membus.slave
+
+一个 XBar 需要有至少一个 MasterPort 和一个 SlavePort. 可以把 system.memory 连到 system.membus 的 MasterPort 上。同时，我们实例化一个 SimpleObject 并把它连到 system.membus 的 SlavePort 上::
+
+  system.memory.port = system.membus.master
+
+  system.hello = SimpleObject()
+  system.hello.mem_side = system.membus.slave
+
+
 .. [1] https://www.gem5.org/documentation/general_docs/memory_system/
 .. [2] https://gem5.github.io/gem5-doxygen/classBaseCache.htm
 .. [3] https://gem5.github.io/gem5-doxygen/classAbstractMemory.html
