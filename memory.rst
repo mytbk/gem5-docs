@@ -82,7 +82,34 @@ Atomic read
 Timing read
 ~~~~~~~~~~~~~~
 
-(TBD)
+对于 Timing 访问方式，CPU 模型执行访存指令用指令类的 initiateAcc 函数。以 TimingSimpleCPU 为例，调用流程如下::
+
+  initiateAcc
+    -> initiateMemRead(exec_context, traceData, addr, mem, flags)  (arch/generic/memhelpers.hh)
+         -> ExecContext::initiateMemRead(addr, size, flags)
+	      -> TimingSimpleCPU::initiateMemRead(addr, size, flags)
+	           -> BaseTLB::translateTiming(req, thread_context, translation, mode)  (arch/generic/tlb.hh)
+		        -> DataTranslation::finish(fault, req, thread_context, mode)  (cpu/translation.hh)
+			     -> TimingSimpleCPU::finishTranslation(state)
+                                  -> TimingSimpleCPU::sendData(req, data, res, read)
+				       -> TimingSimpleCPU::handleReadPacket(pkt)
+				            -> DCachePort::sendTimingReq(pkt)
+
+这样就完成了一次将包含请求信息的数据包发往 D-cache 端口的访问。对于 Timing 访问，DCachePort 还需要实现 recvTimingResp 处理该请求的响应::
+
+  TimingSimpleCPU::DcachePort::recvTimingResp(PacketPtr pkt)
+    -> TimingSimpleCPU::TimingCPUPort::TickEvent::schedule(pkt, tick)
+         -> TimingSimpleCPU::schedule(tickEvent, tick)
+
+而 DCachePort 的 TickEvent 的 process() 内容如下::
+
+  void
+  TimingSimpleCPU::DcachePort::DTickEvent::process()
+  {
+      cpu->completeDataAccess(pkt);
+  }
+
+而 TimingSimpleCPU::completeDataAccess 会调用指令的 completeAcc 函数，从响应的包中获取读到的数据，更新至寄存器堆。
 
 
 在 gem5 Python 配置中连接端口
@@ -140,6 +167,41 @@ Timing read
   system.hello = SimpleObject()
   system.hello.mem_side = system.membus.slave
 
+连接了 SimpleObject 和 SimpleMemory 的实例后，就可以在 SimpleObject 的实例中往存储器读写数据了。但是在这之前，还有一些细节上的东西需要实现。
+
+一个是 Request 里面要有 MasterID. 而 MasterID 是一个从 System 实例里面获取的值。所以在这里我们给 SimpleObject 添加一个 MasterID 字段，同时在 SimpleObject 中添加一个 system 属性::
+
+  system = Param.System(Parent.any, "system object")
+
+在构造函数中::
+
+  SimpleObject::SimpleObject(SimpleObjectParams *params) :
+      masterId(params->system->getMasterId(this))
+
+这样 SimpleObject 的对象就有了 Request 需要的 MasterID 了。然后就可以构造请求和数据包用于读写数据了。以下是用 Atomic 模式读写数据的代码，它在 0x200000 读写一个 4 字节的数据。
+
+写数据::
+
+  RequestPtr req = std::make_shared<Request>(0x200000, 4, 0, masterId);
+  PacketPtr pkt = Packet::createWrite(req);
+
+  uint32_t x = 0xdeadbeef;
+  pkt->dataStatic(&x);
+
+  Tick t = memPort.sendAtomic(pkt);
+
+读数据::
+
+  uint32_t val = 0;
+
+  RequestPtr req = std::make_shared<Request>(0x200000, 4, 0, masterId);
+  PacketPtr pkt = Packet::createRead(req);
+
+  pkt->dataStatic(&val);
+
+  Tick t = memPort.sendAtomic(pkt);
+
+我构造了两个 SimpleObject 的对象 hello 和 goodbye 通过 SystemXBar 连接到 SimpleMemory 上，hello 读，goodbye 写，可以发现 hello 读出了 goodbye 写入到 0x200000 的 0xdeadbeef. 具体代码见 https://git.wehack.space/gem5/log/?h=simple-object-demo.
 
 .. [1] https://www.gem5.org/documentation/general_docs/memory_system/
 .. [2] https://gem5.github.io/gem5-doxygen/classBaseCache.htm
