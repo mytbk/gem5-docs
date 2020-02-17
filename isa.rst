@@ -153,3 +153,12 @@ isa 文件的译码逻辑一般位于 decoder.isa 里面。译码部分比较容
 如果在读取多个字段后能译出指令，那就可以写是什么指令了，格式是 ``SomeOp::InstName(args...)``. 其中 SomeOp 就是在指令模板里面最后定义的指令格式，参数 args 就是 SomeOp 的参数，这些参数里面的内容最终会根据 SomeOp 里面的定义替换掉一个模板里面的一些变量字符串，而 InstName 就是这个指令的名称。
 
 为了方便编写，如果一个译码块里面大多数指令都用 SomeOp 这种指令格式，那么可以把 decode 块里面的内容包装在 ``format SomeOp {}`` 里面，这样使用 SomeOp 这种格式的可以省略开头的 ``SomeOp::``.
+
+
+isa_parser.py 的一些 bug
+----------------------------
+
+在使用 isa_parser.py 的时候，我遇到了一些问题：
+
+- ``{{some_code}}`` 里面的 ``some_code`` 不能为空串，否则会解析失败，哪怕留一个空格或换行都没问题
+- operands.isa 文件中 operand_types 和 operands 必须要有内容，即使我们不用这部分功能，否则使用 InstObjParams 时会出错
