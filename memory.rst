@@ -178,7 +178,14 @@ Timing read
   SimpleObject::SimpleObject(SimpleObjectParams *params) :
       masterId(params->system->getMasterId(this))
 
-这样 SimpleObject 的对象就有了 Request 需要的 MasterID 了。然后就可以构造请求和数据包用于读写数据了。以下是用 Atomic 模式读写数据的代码，它在 0x200000 读写一个 4 字节的数据。
+这样 SimpleObject 的对象就有了 Request 需要的 MasterID 了。然后就可以构造请求和数据包用于读写数据了。
+
+以下是我用 Atomic 和 Timing 两种模式读取存储器的例子，具体代码见 https://git.wehack.space/gem5/log/?h=simple-object-demo.
+
+Atomic 模式
+~~~~~~~~~~~~~~~
+
+以下是用 Atomic 模式读写数据的代码，它在 0x200000 读写一个 4 字节的数据。
 
 写数据::
 
@@ -201,7 +208,42 @@ Timing read
 
   Tick t = memPort.sendAtomic(pkt);
 
-我构造了两个 SimpleObject 的对象 hello 和 goodbye 通过 SystemXBar 连接到 SimpleMemory 上，hello 读，goodbye 写，可以发现 hello 读出了 goodbye 写入到 0x200000 的 0xdeadbeef. 具体代码见 https://git.wehack.space/gem5/log/?h=simple-object-demo.
+我构造了两个 SimpleObject 的对象 hello 和 goodbye 通过 SystemXBar 连接到 SimpleMemory 上，hello 读，goodbye 写，可以发现 hello 读出了 goodbye 写入到 0x200000 的 0xdeadbeef.
+
+Timing 模式
+~~~~~~~~~~~~~~
+
+在 Atomic 模式的基础上，我有写了个 Timing 模式读取存储器的代码::
+
+  void SimpleObject::readTiming()
+  {
+      RequestPtr req = std::make_shared<Request>(0x200000, 4, 0, masterId);
+      PacketPtr pkt = Packet::createRead(req);
+  
+      // we cannot use a local stack variable in timing request
+      pkt->dataDynamic(new uint32_t);
+  
+      bool res = memPort.sendTimingReq(pkt);
+      if (res) {
+          std::cout << "Successfully send timing request. Tick = " <<
+              curTick() << std::endl;
+      }
+  }
+  
+和 Atomic 读取的代码类似，但有几个不同的地方。首先是不能用 dataStatic 让 pkt 使用栈上的变量，因为在 sendTimingReq 返回之后，访存的数据包仍然被使用。其次是 sendTimingReq 返回的是一个 bool 类型的结果，因为它可能会失败，我这里暂时不处理失败的情况。
+
+过一段时间后，memPort 会收到这个请求的返回，需要实现 SimplePort 的 recvTimingResp 方法::
+
+  bool SimpleObject::SimplePort::recvTimingResp(PacketPtr pkt)
+  {
+      std::cout << "Receive packet, val = 0x" <<
+          std::hex << pkt->getLE<uint32_t>() <<
+          ". Tick = " << std::dec << curTick() << std::endl;
+      return true;
+  }
+
+在这里，我们可以从返回的包里面得到存储器中的值。同时输出当前 tick，可以发现和 sendTimingReq 时的 tick 相比，已经经过了 40000 ticks.我的配置里面频率是 1GHz，每周期是 1ns, 1000 ticks. 而在 SimpleMemory 的默认配置里面，延迟是 30ns，就是 30000 ticks. 从 SimpleMemory 的代码里面，可以看到延迟除了配置的这 30ns 之外，还有 pkt 的接收延迟。具体还需要继续仔细分析。而如果是 Atomic 模式，则直接返回 30ns 对应的 30000 tick.
+
 
 .. [1] https://www.gem5.org/documentation/general_docs/memory_system/
 .. [2] https://gem5.github.io/gem5-doxygen/classBaseCache.htm
