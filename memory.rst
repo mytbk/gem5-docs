@@ -242,8 +242,23 @@ Timing 模式
       return true;
   }
 
-在这里，我们可以从返回的包里面得到存储器中的值。同时输出当前 tick，可以发现和 sendTimingReq 时的 tick 相比，已经经过了 40000 ticks.我的配置里面频率是 1GHz，每周期是 1ns, 1000 ticks. 而在 SimpleMemory 的默认配置里面，延迟是 30ns，就是 30000 ticks. 从 SimpleMemory 的代码里面，可以看到延迟除了配置的这 30ns 之外，还有 pkt 的接收延迟。具体还需要继续仔细分析。而如果是 Atomic 模式，则直接返回 30ns 对应的 30000 tick.
+在这里，我们可以从返回的包里面得到存储器中的值。同时输出当前 tick，可以发现和 sendTimingReq 时的 tick 相比，已经经过了 40000 ticks.我的配置里面频率是 1GHz，每周期是 1ns, 1000 ticks. 而在 SimpleMemory 的默认配置里面，延迟是 30ns，就是 30000 ticks. 而如果是 Atomic 模式，则直接返回 30ns 对应的 30000 tick. 通过调试发现，Timing 模式这多出来的 10000 ticks，也就是 10 周期，是从 SystemXBar 来的::
 
+  class SystemXBar(CoherentXBar):
+      # 128-bit crossbar by default
+      width = 16
+  
+      # A handful pipeline stages for each portion of the latency
+      # contributions.
+      frontend_latency = 3
+      forward_latency = 4
+      response_latency = 2
+      snoop_response_latency = 4
+  
+      # Use a snoop-filter by default
+      snoop_filter = SnoopFilter(lookup_latency = 1)
+
+这里 frontend_latency, forward_latency, response_latency 和 snoop_filter.lookup_latency 加起来刚好是 10 周期。在配置文件中修改这几个参数的值，都可以发现 recvTimingResp 中的周期发生相应的变化，足以说明多出来的 10 个周期是 SystemXBar 中的这几个延迟的总和。
 
 .. [1] https://www.gem5.org/documentation/general_docs/memory_system/
 .. [2] https://gem5.github.io/gem5-doxygen/classBaseCache.htm
