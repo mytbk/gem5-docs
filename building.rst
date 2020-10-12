@@ -1,7 +1,7 @@
 gem5 的构建
 ================
 
-gem5 使用 `scons <https://scons.org/>`__ 构建系统，而且似乎还没支持 Python 3 的 scons 构建，如果系统中的 scons 用的是 Python 3 的版本，则需要装一个 Python 2 的。
+gem5 使用 `scons <https://scons.org/>`__ 构建系统。从 v20.0.0.0 开始，支持 Python 3 的 scons 构建，如果使用老版本的 gem5，则需要 Python 2 的 scons.
 
 构建 gem5 的命令行很简单，以 X86 CPU 架构为例::
 
@@ -64,6 +64,8 @@ gem5.opt 表示用 opt 配置的编译和链接参数构建 gem5. 除了 opt 之
               disable_partial=disable_partial)
 
 对于使用者来说，gem5.debug 编译优化最少，包含调试信息，适合用于调试。gem5.opt 比较常用，它在构建时使用了较多的编译优化。gem5.fast 比 gem5.opt 更快，但是使用 gem5.fast 时没有调试输出（在 gem5 里面用 DPRINTF 可以输出调试信息）。而 prof 和 perf 是用于对 gem5 的代码进行运行剖视（profiling）使用的。
+
+同时，可以注意到，构建 gem5.debug 时，目标文件的后缀是 ".do". 而从 src/SConscript 可以看到，用不同的配置生产的目标文件的后缀都不同，因此构建不同配置的二进制文件，可以不用删掉 build 目录，直接用 scons 构建即可。
 
 gem5 的 SConstruct 配置了一些常用的构建选项，可以在 scons 的命令行中加入，例如::
 
