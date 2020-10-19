@@ -12,7 +12,7 @@ gem5 有 Atomic, Functional, Timing 三种模拟存储访问的方式。一下�
 
 - Timing: 最详细的访存模拟。模拟了包括队列延迟和资源竞争等现实情形。
 - Atomic: 最快的模拟方式，访存请求发送后就会得到响应。
-- Functional: 和 Atomic 一样立刻得到响应。Functional 可以和 Timing/Atomic 一起使用。
+- Functional: 和 Atomic 一样立刻得到响应。Functional 可以和 Timing/Atomic 一起使用。每个 Functional 的访问和其他 Functional/Timing 的访问保序，即如果这个 Functional 请求和其他未完成的 Timing 请求访问了同一地址，访问的内容会在不同的访问之间转发，最终的访问效果和按顺序发送这些访问请求的效果相同，从而达到功能上等价。
 
 mem/protocol 下有这三种访问方式的接口 {Timing,Atomic,Functional}{Request,Response}Protocol.
 
