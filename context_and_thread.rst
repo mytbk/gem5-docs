@@ -47,3 +47,10 @@ GPU 模型中的 GPUExecContext
 ---------------------------------
 
 gem5 中有 GPU 模型 gpu-compute，它用的是一套和 CPU 模型完全独立的代码。GPU 模型里面也有 GPUExecContext，实现比较简单，只有 wavefront(), computerUnit(), readMiscReg() 和 writeMiscReg() 这几个函数，内部有一个 GPUISA 的接口。
+
+ThreadContext 和 CPU 中断处理
+---------------------------------
+
+不同的处理器体系结构处理中断的方式不同，因此它们的实现代码位于 arch/ 下。此外，由于中断并不是由处理器指令实现，因此 gem5 在处理中断时不使用 ExecContext，而是使用 ThreadContext.
+
+gem5 的中断由 Fault (sim/faults.hh) 类实现，它的 ``Fault::invoke(ThreadContext *, const StaticInstPtr &)`` 接口函数用于实现各类处理器异常的处理。在发生中断时使用这个函数，就可以从处理器线程的 ThreadContext 中直接操作该线程的各个体系结构状态，包括逻辑寄存器和PC.
