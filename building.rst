@@ -77,5 +77,7 @@ gem5 的 SConstruct 配置了一些常用的构建选项，可以在 scons 的�
 
   scons -j9 build/ARM/gem5.opt USE_SYSTEMC=False
 
+如果需要加速编译，可以设置CC和CXX使用ccache，在笔者使用的一台服务器上，使用ccache构建gem5.opt可以减少大约一半的时间。使用gold链接器可以提升链接速度，可以用--gold-linker选项指定使用gold链接器。
+
 .. [1] https://www.semanticscholar.org/paper/A-Primer-on-Memory-Consistency-and-Cache-Coherence-Sorin-Hill/10f1faeec4ee2158b8535b249a20de5419998153
 .. [2] https://github.com/google/sanitizers/wiki/AddressSanitizer
